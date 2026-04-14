@@ -1,15 +1,19 @@
 
 import os
 import re
+from dotenv import load_dotenv
 import pypdf
 from docx import Document
 import google.generativeai as genai
 from langchain_community.vectorstores import FAISS
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
+# Charger les variables d'environnement
+load_dotenv()
+
 # Configuration de l'API Gemini
-GOOGLE_API_KEY = "AIzaSyCjuZV3HRIpK-blFD02Z5CB_akR9wiCKJ0"
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "AIzaSyCjuZV3HRIpK-blFD02Z5CB_akR9wiCKJ0")
 genai.configure(api_key=GOOGLE_API_KEY)
 
 

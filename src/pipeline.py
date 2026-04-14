@@ -11,7 +11,7 @@ from docx import Document
 from dotenv import load_dotenv
 import google.generativeai as genai
 from langchain_community.vectorstores import FAISS
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 # Charger les variables d'environnement depuis .env
@@ -21,9 +21,9 @@ load_dotenv()
 # Priorité : variable d'environnement > .env > clé codée en dur (fallback)
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
-if not GOOGLE_API_KEY or GOOGLE_API_KEY == "AIzaSyDDRj1Wd3zYvWaeXClkZYi-pZF76y2P750":
+if not GOOGLE_API_KEY or GOOGLE_API_KEY == "AIzaSyCReIn2cbnHyZ6IxqocHFssHrX73Rpf0NA":
     # Utiliser la clé fournie en dur comme fallback
-    GOOGLE_API_KEY = "AIzaSyDDRj1Wd3zYvWaeXClkZYi-pZF76y2P750"
+    GOOGLE_API_KEY = "AIzaSyCReIn2cbnHyZ6IxqocHFssHrX73Rpf0NA"
     print("ATTENTION: Clé API Gemini codée en dur. Pour la sécurité, utilisez une variable d'environnement.")
 
 genai.configure(api_key=GOOGLE_API_KEY)
@@ -68,20 +68,38 @@ def load_cv(file_path):
 
 def clean_text(text):
     """
-    Nettoie le texte extrait (supprime espaces multiples, etc.)
+    Nettoie le texte extrait (supprime HTML, espaces, caractères spéciaux)
     
     Args:
-        text (str): Texte brut
+        text (str): Texte brut pouvant contenir du HTML
         
     Returns:
-        str: Texte nettoyé
+        str: Texte nettoyé et lisible
     """
+    import html
+    
     # Assurer que le texte est correctement encodé en UTF-8
     if isinstance(text, bytes):
         text = text.decode('utf-8', errors='replace')
     
-    # Supprime les espaces multiples et les sauts de ligne excessifs
+    # 1. Décode les entités HTML (&lt; -> <, &gt; -> >)
+    text = html.unescape(text)
+    
+    # 2. Supprime les balises HTML/XML complètes
+    text = re.sub(r'<[^>]+>', '', text)
+    
+    # 3. Supprime les caractères de contrôle non imprimables
+    text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', ' ', text)
+    
+    # 4. Supprime les espaces multiples et les sauts de ligne excessifs
     text = re.sub(r'\s+', ' ', text)
+    
+    # 5. Supprime les astérisques multiples (**) qui ne servent à rien
+    text = re.sub(r'\*{2,}', '', text)
+    
+    # 6. Nettoie les tirets et caractères de formatage
+    text = re.sub(r'[-–—]+', '-', text)
+    
     return text.strip()
 
 
@@ -158,25 +176,19 @@ def generate_answer(prompt):
         
     Returns:
         str: Réponse générée ou message d'erreur explicite
-        
-    Notes:
-        - Essai d'abord avec gemini-2.5-flash (plus rapide et performant)
-        - Fallback sur gemini-2.5-pro si 2.5-flash non disponible
-        - Fallback sur gemini-2.0-flash si autres non disponibles
-        - Gère les erreurs d'API quota et d'authentification
     """
     # Liste des modèles à essayer par ordre de préférence
     models_to_try = [
-        'gemini-2.5-flash',      # Meilleur choix (2025)
-        'gemini-2.5-pro',        # Fallback pour réponses plus détaillées
-        'gemini-2.0-flash',      # Fallback (stable)
-        'gemini-flash-latest'    # Alias disponible
+        'gemini-2.5-flash',
+        'gemini-2.5-pro',
+        'gemini-2.0-flash',
+        'gemini-flash-latest'
     ]
     
     generation_config = {
-        'temperature': 0.3,  # Déterministe pour des réponses précises
-        'top_p': 0.8,
-        'max_output_tokens': 500,
+        'temperature': 0.5,  # Équilibre entre créativité et précision
+        'top_p': 0.9,
+        'max_output_tokens': 1000,  # Augmenté pour réponses détaillées
     }
     
     last_error = None
@@ -190,7 +202,6 @@ def generate_answer(prompt):
             )
             # Nettoyer et encoder correctement le texte
             answer_text = response.text
-            # Faire un encode/decode pour nettoyer l'UTF-8
             if isinstance(answer_text, bytes):
                 answer_text = answer_text.decode('utf-8', errors='replace')
             else:
@@ -199,16 +210,15 @@ def generate_answer(prompt):
             
         except Exception as e:
             last_error = str(e)
-            # Essayer le modèle suivant
             continue
     
-    # Si aucun modèle ne fonctionne, retourner un message d'erreur explicite
+    # Si aucun modèle ne fonctionne
     if last_error:
         if "429" in last_error or "quota" in last_error.lower():
-            return "Erreur : Quota API Gemini dépasse. Veuillez vérifier votre plan d'utilisation."
+            return "Erreur : Quota API Gemini dépassé. Veuillez vérifier votre plan d'utilisation."
         elif "401" in last_error or "invalid" in last_error.lower():
-            return "Erreur : Clé API Gemini invalide. Veuillez vérifier que GOOGLE_API_KEY est correcte."
-        elif "404" in last_error or "not found" in last_error.lower():
+            return "Erreur : Clé API Gemini invalide."
+        elif "404" in last_error:
             return "Erreur : Les modèles Gemini testés ne sont pas disponibles."
     
     return "Erreur : Impossible de contacter l'API Gemini. Verifiez votre connexion Internet."
@@ -216,38 +226,31 @@ def generate_answer(prompt):
 
 def build_prompt(question, context):
     """
-    Construit le prompt optimisé pour le modèle LLM
-    Assure que le modèle répond uniquement sur la base du CV fourni
+    Construit un prompt optimisé pour générer des réponses claires et détaillées
     
     Args:
         question (str): Question posée par l'utilisateur
-        context (str): Contexte extrait du CV (chunks pertinents)
+        context (str): Contexte extrait du CV
         
     Returns:
-        str: Prompt formaté prêt à être envoyé au modèle
-        
-    Notes:
-        - Enforce la politique "CV Only" pour éviter les hallucinations
-        - Demande des réponses structurées et factuelles
-        - Interdit l'invention ou la déduction d'informations
+        str: Prompt formaté pour le modèle LLM
     """
-    prompt = f"""Tu es un assistant spécialisé dans l'analyse de CV pour la 4IASDR.
-Réponds à la question en te basant UNIQUEMENT sur le contexte fourni ci-dessous.
+    prompt = f"""Tu es un expert en analyse de CV. Lis attentivement le contexte fourni et réponds à la question de manière CLAIRE, DÉTAILLÉE et STRUCTURÉE.
 
-RÈGLES STRICTES À RESPECTER :
-1. Si l'information est présente dans le contexte, réponds de manière claire et structurée
-2. Si l'information n'est PAS dans le contexte, réponds EXACTEMENT : "Cette information n'est pas présente dans le CV fourni"
-3. INTERDIT : Ne déduis pas et n'invente pas d'informations
-4. Reste factuel et précis - utilise les données du CV telles quelles
-5. Pour les questions sur la formation, cite les diplômes avec les établissements et dates si disponibles
-6. Pour l'expérience, cite les postes, entreprises et périodes mentionnés dans le CV
+DIRECTIVES :
+1. Fournís une réponse COMPLÈTE avec tous les détails disponibles
+2. Si l'information est présente, développe ta réponse avec les dates, entreprises, technologies mentionnées
+3. Organise ta réponse avec des bullet points ou numérotation si nécessaire
+4. Si l'information n'est PAS dans le contexte, dis simplement : "Cette information n'est pas présente dans le CV"
+5. Ne dééduis pas - reste fidèle aux données du CV
+6. Sois aussi spécifique et détaillé que possible
 
 CONTEXTE DU CV :
 {context}
 
-QUESTION : {question}
+QUESTION DE L'UTILISATEUR : {question}
 
-RÉPONSE :"""
+RÉPONSE DÉTAILLÉE :"""
     return prompt
 
 
@@ -324,8 +327,8 @@ def reload_vector_store(file_path):
 
 def answer_cv_only(question, store):
     """
-    Répond à une question en se basant UNIQUEMENT sur le CV chargé
-    Chaîne complète : récupération -> prompt -> génération
+    Répond à une question en se basant sur le CV chargé
+    Chaîne complète : récupération → prompt → génération
     
     Args:
         question (str): Question posée par l'utilisateur
@@ -333,14 +336,9 @@ def answer_cv_only(question, store):
         
     Returns:
         str: Réponse générée par le modèle LLM
-        
-    Notes:
-        - Applique la sécurité métier (CV Only)
-        - Affiche le contexte récupéré pour le débogage
-        - Fallback automatique sur d'autres modèles si erreur
     """
-    # Étape 6 : Récupération des chunks pertinents
-    relevant_docs = retrieve_relevant_chunks(question, store, k=4)
+    # Récupération des chunks pertinents (augmenté à 6 pour plus de contexte)
+    relevant_docs = retrieve_relevant_chunks(question, store, k=6)
     context_parts = []
     for doc in relevant_docs:
         content = doc.page_content
@@ -351,15 +349,15 @@ def answer_cv_only(question, store):
     
     context = "\n".join(context_parts)
     
-    # DEBUG : Affichage du contexte (utile pour le développement)
+    # DEBUG : Affichage du contexte
     print("\n" + "="*60)
     print("CONTEXTE RÉCUPÉRÉ POUR LA QUESTION")
     print("="*60)
     print(context[:500] + "..." if len(context) > 500 else context)
     print("="*60 + "\n")
     
-    # Étape 7 : Construction du prompt optimisé
+    # Construction du prompt optimisé
     prompt = build_prompt(question, context)
     
-    # Étape 8 : Génération de la réponse
+    # Génération de la réponse
     return generate_answer(prompt)

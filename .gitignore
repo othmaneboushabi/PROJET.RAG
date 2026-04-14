@@ -8,6 +8,10 @@ venv/
 ENV/
 env/
 
+# Cache HuggingFace (modèles ML)
+hf_cache/
+.cache/
+
 # Données sensibles
 data/
 
@@ -25,7 +29,6 @@ __pycache__/
 *.swo
 
 # Caches
-.cache/
 .pytest_cache/
 
 # Fichiers temporaires

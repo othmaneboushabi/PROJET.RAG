@@ -10,6 +10,13 @@ from src.utils import load_cv_history, save_cv_history, export_conversation_to_p
 import os
 from datetime import datetime
 
+# ==================== CACHING ====================
+@st.cache_resource
+def load_embeddings_cached():
+    """Précharge le modèle d'embeddings une seule fois"""
+    from src.pipeline import build_embeddings
+    return build_embeddings()
+
 st.set_page_config(
     page_title="CvRag - Analyse de CV avec IA",
     page_icon="🎓",
