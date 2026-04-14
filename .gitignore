@@ -1,0 +1,38 @@
+# Variables d'environnement et clés API
+.env
+.env.local
+.env.*.local
+
+# Environnement virtuel
+venv/
+ENV/
+env/
+
+# Données sensibles
+data/
+
+# Cache Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Caches
+.cache/
+.pytest_cache/
+
+# Fichiers temporaires
+*.log
+*.tmp
+*.bak
+
+# OS
+.DS_Store
+Thumbs.db

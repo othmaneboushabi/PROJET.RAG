@@ -1,0 +1,34 @@
+# 🔴 IMPORTANT - CONFIGURATION API MANQUANTE
+
+## Votre clé API Gemini n'est pas valide ❌
+
+Le LLM ne répond pas parce que **la clé API dans `.env` est invalide**.
+
+## SOLUTION RAPIDE (2 minutes) ⚡
+
+### 1. Créer une clé API Google Gemini
+👉 **https://ai.google.dev/** → Cliquez sur **"Get API Key"**
+
+### 2. Mettre à jour votre `.env`
+
+```bash
+# Ouvrez: .env
+# Remplacez THIS:
+GOOGLE_API_KEY=REMPLACEZ_PAR_VOTRE_CLE_API_GEMINI
+
+# PAR VOTRE CLE:
+GOOGLE_API_KEY=AIzaSy_xxxxxxxxxxxxx
+```
+
+### 3. Redémarrer Streamlit
+```bash
+streamlit run app.py
+```
+
+## ✅ C'est tout!
+
+L'app devrait fonctionner maintenant. Le LLM répondra à vos questions sur les CVs.
+
+---
+
+**Questions?** Consultez [SETUP_API.md](SETUP_API.md) pour plus de détails.
